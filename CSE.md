@@ -3118,6 +3118,9 @@ procedure SEND(buffer reference p, message msg)
         - 两次查找，性能较差，但是十分简单
     - EPT is controlled by the hypervisor
     - EPT is per-VM
+- 之前提到的权限问题直接由下图右边的线解决
+- 因此不需要像 SPT 那样维护两个 SPT
+    ![ept](./image/ept.png)
 
 # System Performance
 - Design for performance
@@ -3406,6 +3409,7 @@ Might hold your ATM request until others arrive to do batching
     - Problem:
         - 考虑特殊情况：容量 3，不断循环访问 0，1，2，3，4，此时 Most-Recently-Used 比 LRU 更好。（但是过于特殊）
 - Stack Algorithms
+    - LRU 的一种实现
     - 容量为 3 时的情况时容量为 4 的情况时的子集，因此不会导致 Belady's anomaly
     - Subset property
         - For the optimal policy, at all times, the pages it keeps in the 3-page memory is a subset of that it keeps in the 4-page memory
@@ -3541,6 +3545,7 @@ Might hold your ATM request until others arrive to do batching
 - <b>How to know deadline?</b>
     - Specified by tasks themselves
     - In the form of (C, P), C for second, P for period
+        - P 是时间片段， C 是 P 时间内需要占用的时间
     - The scheduler rejects new task if sum(Ci/Pi) > 1
 
 ## Disk Scheduling: Goals
