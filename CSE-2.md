@@ -174,6 +174,13 @@ As a component and as a system itself
     - 之后由接收者自行解码（decoding）
 - 海明距离（Hamming Distance）
     - 定义：A 异或 B 的结果中 1 的个数，即为 A 与 B 的海明距离
+- If H-distance between every legitimate pair is 2
+    - 000101, can only detect 1-bit flip
+- If H-distance between every legitimate pair is 3
+    - Can only correct 1 bit flip
+- If H-distance between every legitimate pair is 4
+    - Can detect 2-bit flip, correct 1-bit flip
+
 
 - Example 1： Simple Parity Check
     - 2 bits -> 3 bits
@@ -923,3 +930,236 @@ Additive increase & multiplicative decrease
     - W = min(Receiver_buffer, cwnd)
     - Congestion window is adapted by the congestion control protocol to ensure efficiency and fairness
     - TCP congestion control uses AIMD which provides fairness and efficiency in a distributed way
+
+# lec 19
+## Fault Tolerant
+Reliable System from Unreliable Components
+
+### War Stroies: MAXC & Alto （可以跳过不看）
+略。总之就是 Alto 相比 MAXC 在容错机制上有修改，导致许多 failure。 Alto 能纠错，能检测错误；MAXC 只能检测错误。MAXC相对稳定，而Alto问题很大。
+
+- Lesson-1:
+    - 庞大系统中没有所谓的微小的改动
+    - 新的软件可能使之前工作正常的硬件出问题
+    - 你永远不知道你现在的是否处于悬崖边缘
+- Lesson-2：
+    - 经验是处理 failure 最主要的方式
+    - 几乎不可能，在没有任何经验的情况下，预测将要碰到哪些 failure
+
+- 回到 MAXC：为什么当时几乎没有什么错误？
+    - 虽然硬件会 report 纠错与检测到而未被纠正的错误
+    - 软件仅仅记录检测到而未被纠正的错误
+- Lesson-3：
+    - Safety margin principle ? 
+    - " It's good to learn from your mistakes.    It's better to learn from other people's mistakes." 
+- Alto 之后又开发了 Alto-2
+    - 使用了新的 4096 bits 的内存条
+    - Single-error-correction, double-error-detection，与MAXC相同
+    - 但之后同样发现问题，容错机制在 1/4 cards 中不适用
+- Lesson-4：
+    - 永远不要认为硬件能够一致按照它说明书说的那样完美运行
+    - 看上去在正常工作不代表它实际上确实如此
+
+## Fault, Error, Failure
+- **Fault** can be latent(adj. 潜在的) or active
+    - If active, get wrong data or control signals
+- **Error** is the results of active **fault**
+    - Discovery of errors is ad hoc (formal specification?)
+- **Failure** happens if an **error** is not detected and masked
+    - Not producing the intended result at an interface
+
+- 子系统的 failure 可以成为系统的 fault
+    - fault 可以导致 error，error 可以进一步引起更大的子系统的 failure
+    - 除非上一级子系统处理了这个 error
+
+### Tolerating Active Faults
+- Do nothing: 让上一层系统处理
+    - 层级越多，这种模式就越复杂
+- Be fail-fast: report the problem
+    - E.g., Ethernet 中发生冲突时，会停止发送、广播，然后等待随机时间
+- Be fail-safe: transfer incorrect values to acceptable ones
+    - E.g., blinking red light in all directions
+- Be fail-soft: continues to operate with degradation
+    - E.g., airplane with three engines continues to fly if one has failure
+- Mask the error: makes incorrect value right
+
+## MTTF(Mean Time To Failure) & Availability
+- MTTF: mean time to failure
+- MTTR: mean time to repair
+- MTBF: mean time between failure
+- MTBF = MTTF + MTTR
+
+### 测量 MTBF
+- Evalutating & Predicting
+    - The more reliable, the longer it takes to evaluate 
+    - Not measure directly, but use proxies to estimate its value
+- One-way to measure MTBF
+    - E.g. 3.5-inch disk's MTTF is 700,000 hours (80 years!)
+    - Guess: ran 7,000 disks for 1,000 hours and 10 failed
+    - If the failure process were memoryless, then OK
+    - "expected operational lifetime" is only 5 years
+
+![bathtub-curve](./image/bathtub-curve.png)
+
+## Redundancy
+
+### Systematically Applying Redundancy
+
+- Masking error
+    - Analog system designer: margin
+    - Digital system designer: redundancy
+- Outline
+    - Coding: incremental redundancy
+        - 链路层中的纠错、检错机制。Hamming distance
+    - Replication: massive redundancy
+        - 多个实例，挂了一个还有其他的可以工作
+        - Mask failures silently
+    - Voting (类似于分布式系统中的 voting)
+        - NMR：N-modular redundancy(supermodule)
+            - 能够在任何级别应用
+        - Fail-vote: NMR with a majority voter
+            - 如果某个 replica 不同意 majority，rasie an alert
+            - 如果没有 majority，signal a failure
+            - 如果两个 replica 以不同形式 fail，那么 fail-fast
+        - 系统正常工作的概率 R_supermodel = R^3 + 3R^2(1-R)
+        - Voter 也会出错
+            - R 是单个 module 正常工作的概率
+            - 因此系统出错的概率为 1 - R_supermodel
+            - Voter 也同样应该多备份(replica)
+            - Everything should be replicated
+            - Recursive：voters belong to next module
+            - 最后的 voters 是客户端
+            ![voter](./image/voter.png)
+        - TMR(Triple Modular Redundancy) 可以提高可靠性
+            - R(T) = 0.999, TMR's R(T) = 0.999997
+        - 但是 MTTF 却变小了
+            - 其实很显然，多了几个 replica，每个 replica 都可能会出错，只不过被 mask 了
+            - If  MTTF is 6,000 hours and fails independently, and the mechanism of engine failure is memoryless
+            - 6,000 hours in only 2,000 hours of flying, first fail
+            - 3,000 hours next and cause the second fail
+            - 5,000 hours < 6,000 hours
+        - MTTF-replica and MTTF-system
+            - If MTTF-replica = 1, N replicas total
+                - Expected time until 1st failure is MTTF-replica/N
+                - Expected time from then until the 2nd is MTTF-replica/(N-1)
+                - Expected time until the system of N replicas fails is 
+                ```
+                MTTF_system = 1 + 1/2 + 1/3 + ... + 1/N
+                ```
+                - For large N is approximately ln(N)
+            - If mission time is long compared with MTTF-replica
+                - Simple replication escalates the cost while providing little benefit
+    - Repair
+        - 公式有点麻烦，直接截图
+        ![repair](./image/repair.png)
+        ![repair2](./image/repair2.png)
+
+### 回顾我们最初乐观的假设
+- 错误独立性 fail independently (?)
+    - 谁报错，就是谁出错 （Same vendor, same fault）
+    - Earthquake, whose MTTF is less than 3650 years
+- 错误的无记忆性 memoryless failure (?)
+    - Bathtub curve
+- 修复的无记忆性 memoryless repair (?)
+    - Stock enough spares
+- 完美修复 flawless repair (?)
+    - Replace the wrong disk, forget to copy data, etc.
+
+## 磁盘的容错 Magnetic Disk Fault Tolerance
+- 使用硬盘作持久化存储
+    - Low cost, large capacity, non-volatility
+    - 断电数据仍保留
+- Three/four nested layers
+    - Raw storage, fail-fast storage, careful storage
+    - Optional: durable storage
+
+### 磁盘的错误种类
+- 机械上的磨损
+- A bumping may cause a head to hit the surface
+    - Head crush may also create cloud of dust
+    - Results in several sectors decaying: decay set
+- Electronic components in the controller age
+    - E.g. clock timing and signal detection circuits
+    - Cause previously good data to become unreadable, or bad data to be written
+    - Soft or hard errors
+- Seek error
+    - Arm moves to a wrong track
+
+### ALL_OR_NOTHING_PUT
+```C
+procedure ALMOST_ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
+    CAREFUL_PUT (data, all_or_nothing_sector.S1)
+    CAREFUL_PUT (data, all_or_nothing_sector.S2)	
+    CAREFUL_PUT (data, all_or_nothing_sector.S3)
+
+procedure ALL_OR_NOTHING_GET (reference date,all_or_nothing_sector)
+    CAREFUL_GET (data1, all_or_nothing_sector.S1)
+    CAREFUL_GET (data2, all_or_nothing_sector.S2)
+    CAREFUL_GET (data3, all_or_nothing_sector.S3)
+    if (data1 = data2) 
+        data ← data1
+    else  
+        data ← data3
+
+procedure ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
+    CHECK_AND_REPAIR (all_or_nothing_sector)
+    ALMOST_ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
+
+procedure CHECK_AND_REPAIR (all_or_nothing_sector)				                            // Ensure copies match
+    CAREFUL_GET (data1, all_or_nothing_sector.S1)
+    CAREFUL_GET (data2, all_or_nothing_sector.S2)
+    CAREFUL_GET (data3, all_or_nothing_sector.S3)
+
+```
+
+![all-or-nothing-put](./image/all-or-nothing-put.png)
+```C
+// Example
+if (data1 = data2) and (data2 = data3) return	// State 1 or 7, no repair
+if (data1 = data2)
+    CAREFUL_PUT (data1, all_or_nothing_sector.S3) return  // State 5 or 6.
+if (data2 = data3)
+    CAREFUL_PUT (data2, all_or_nothing_sector.S1) return  // State 2 or 3.
+CAREFUL_PUT (data1, all_or_nothing_sector.S2) // State 4, go to state 5
+CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
+
+```
+
+### Durable Storage: RAID-1
+- 磁盘阵列: 多个磁盘 replica
+    - 这里的例子总共两个磁盘
+- Tolerated error
+    - Hard errors reported by careful layer are masked by reading from other replicas
+- Untolerated error
+    - Decay on the same sector of all the replicas, status = BAD
+    - OS crashes during a DURABLE_PUT
+    - Decay in a way that is undetectable
+
+### Improving on RAID-1
+- Clerk：周期性检测 decay
+    - 周期 T_d 应足够小
+- Tolerated error
+    - (Old) Hard errors reported by careful layer are masked by reading from one of the other replicas
+    - (New) Data of a single decay set decays, is discovered by the clerk, and is repaired, all within Td of the decay event
+- Untolerated error
+    - The OS crashes during DURABLE_PUT
+    - All decay sets fail with Td
+    - The data of some sector decays in a way undetectable
+
+### RAID-4 (Dedicated Parity Disk)
+![raid-4](./image/raid-4.png)
+- 所有信息异或存放于一个单独的硬盘
+-  单独一个 disk 坏了可以恢复
+- 需要 N+1 个硬盘
+- Performance benefits if stripe a single file across multiple data disks
+- All writes hit the parity disk
+
+### RAID-5 5 (Spread Out the Parity)
+![raid-5](./image/raid-5.png)
+- 所有信息异或后分散存储于每个硬盘
+- Writes are spread across disks
+
+### Summary
+- 系统会出错，我们需要考虑这些错误，建立可靠的、能够容错的系统。但reliability & cost, reliability & simplicity 之间都有 trade off
+- 主要实现 reliability 的方式是 redundancy。而 redundancy 的其中一种形式就是 replication ( e.g. replica 能解决 disk failure)
+- RAID-5 即防止 single-disk failures 同时性能也很好
