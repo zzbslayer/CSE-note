@@ -1241,8 +1241,9 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - op 只有在被大多数节点执行后，才会被提交到 log 里
 - 一旦提交， op 在 log 中的位置就是固定的
 - 因此在 log 中同一个位置，不可能有不同的 op 
+- view change 发生时，下一个 primary 应该先更新 log，保证自己的 log 是正确的
 
-### Q&A
+
 - Q: 如何防止两个 primary 在log相同位置提交不同的 op
 - A: Primary 在 commit 之前，必须等待规定的节点数
 (quorum n.法定人数)返回。
@@ -1256,3 +1257,76 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 
     - 在 S2 成为 primary 的时候，必须知道上一个 view 的 log 是什么样的（问剩下的 majority 要 log）
     - 但ppt这个例子不好，s1 崩了，s2 log不是最新，只有 s3 正常，这个时候正常的机器数量为 1，集群其实已经挂了……
+
+# lec21
+## 回顾一下 VR
+1. 正确性：每个节点都按照 log 中的顺序执行 op
+    - 只有在被大多数节点执行后，才写入 log
+    - **加入到 log 不等于 commit**
+2. 因此，两个不同的 op 不可能位于 log 中同一位置
+3. 所有在 view V-1 中被提交的 op，必须被 view V 的 primary 知道。
+    - view change 之后，新的 primary 更新完 log 之后，新的 view 才进入正常状态
+
+## 如果 Primary 没有收到 majority 的答复？
+- 共 2F + 1 个节点
+- Case 1. 超过半数 (F+1) 节点挂了
+    - The system will stuck
+- Case 2. 超过半数 (F+1) 节点还活着
+    - 发起 viewchange，old primary 在网络恢复后会跟上进度
+
+## Basic VR protocol
+![basic-vr](./image/basic-vr.png)
+- curV: 当前 view number
+- status: NORMAL, VIEW-CHANGE, RECOVERY
+- op-num: log 中最后一个 op 的编号
+- commit-num: 最后一个提交的 op 的编号
+
+![basic-vr1](./image/basic-vr1.png)
+- server 收到 prepare 消息后
+    - 如果 `curV != msg.curV or status != NORMAL` 就忽略 req
+    -  等待它自己的 log 变为最新之后 (wait until it has entries in its log for all earlier requests )
+    - 将该 req 加入到 log 的 msg.op-num 位置
+## Normal Process
+![vr-normal](./image/vr-normal.png)
+
+## Recovery
+- 某个节点收到 prepare 消息后，如果发现它的 curV < msg.curV，那么要给其他节点发 recovery 请求
+- 其他节点收到 recovery 请求后，如果该节点 NORMAL，就返回 curV, x, log, op-number, commit-number
+
+![recovery1](./image/recovery1.png)
+![recovery2](./image/recovery2.png)
+![recovery3](./image/recovery3.png)
+
+## View Change
+![viewchange1](./image/viewchange1.png)
+![viewchange2](./image/viewchange2.png)
+![viewchange3](./image/viewchange3.png)
+![viewchange4](./image/viewchange4.png)
+
+- Problem： viewchange 发生时，如何决定新的 primary 采用哪个 log ?
+- Solution-1： 最长的 log ?
+![longest-log](./image/longest-log.png)
+- Solution-2: curV 最大的 log ?
+![biggest-curV](./image/biggest-curV.png)
+
+因此引入新的状态变量 `lastV` ：上一个 view-number
+
+- final Solution：
+    - Rule 1：采取 lastV 最大的 log
+![viewchange5](./image/viewchange5.png)
+![viewchange6](./image/viewchange6.png)
+![viewchange7](./image/viewchange7.png)
+![viewchange8](./image/viewchange8.png)
+![viewchange9](./image/viewchange9.png)
+![viewchange10](./image/viewchange10.png)
+    - Rule 2: 如果根据 Rule 1 得到的 log 有复数个，那么选最长的。
+
+## Summary
+![vr-summary](./image/vr-summary.png)
+- 最开始，每个 backup 与 primary 是一致的
+- 同一个 view 中，每个 op 一定被大多数节点记录在 log 的相同位置
+- 同一个 view 中，backup 的 log 一定是 primary 的 log 的 prefix
+- 在任何 majority 中，必定有一个 backup 的 log 是正确的（包含所有提交过的 op）
+- 切换到新的 view V 的 primary ，一定能够获取到 viw V-1 所有提交过的 op
+
+![vr-summary2](./image/vr-summary2.png)
