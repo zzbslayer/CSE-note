@@ -1163,3 +1163,96 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - 系统会出错，我们需要考虑这些错误，建立可靠的、能够容错的系统。但reliability & cost, reliability & simplicity 之间都有 trade off
 - 主要实现 reliability 的方式是 redundancy。而 redundancy 的其中一种形式就是 replication ( e.g. replica 能解决 disk failure)
 - RAID-5 即防止 single-disk failures 同时性能也很好
+
+# lec-20
+
+## 分布式系统中的容错
+
+### 分布式系统
+- For ease-of-use
+    - Handle geographic separation 
+    - Provide users (or applications) with location transparency 
+- For availability 
+    - Build a reliable system out of unreliable parts 
+- For scalable capacity 
+    - Aggregate resource
+- For modular functionality
+    - Only need to build one service to accomplish one single task well
+        - Authentication server 
+        -  Backup serve
+- 问题就在于复杂度
+
+- Abstraction & Interface
+- System Architecture
+- Fault Tolerance
+- Consistency 一致性
+- Performance
+    - Latency & Throughput
+    - 更多的资源就能得到更好的 Throughput 
+    - 而 Latency 则要看性能瓶颈在哪
+
+- 分布式系统正确性的一些问题
+    - 同步性
+    - 机器挂了
+    - 网络挂了
+
+### Strawman fails under concurrency
+![strawman-failure](./image/strawman-failure.png)
+
+### Primary determines order of updates
+- 可以通过一个主节点 (primary) 进行更新
+    - 引入 sequence number
+    - 为了保证 replica 的一致性，必须按照一致的顺序写入。因此单独用一个 server 来决定更新顺序，其他 replica 听从主节点
+
+![primary](./image/primary.png)
+
+- 正常流程
+    - Primary 收到来自 client 的 op
+    - 给所有 backup 发送 op
+    - 等待 backup 回复
+    - 执行 op 并返回给 client
+- Challenge in handling failure
+    - Challenge 1: 如果有一个 backup 的 ack 超时怎么办？
+    ![challenge1-1](./image/challenge1-1.png)
+        - Solution 1: Primary 重试
+            - 但是只对暂时性的错误有效
+        - Solution 2: 忽略失败的节点
+            - 忽略多少个是安全的？如何让被忽略的节点之后跟上？
+    - Challenge1-2: 如果 primary 挂了怎么办
+    ![challenge1-2](./image/challenge1-2.png)
+        - Solution: 切换到其他 primary
+            - 如何保证最后一个 op 切换之后不丢？
+            - 是否有可能出现两个 primary？
+                ![challenge1-3](./image/challenge1-3.png)
+            - 如果上图中的网络问题恢复以后，S3, S1 如何重组？
+
+### Viewstamp replication
+![log](./image/log.png)
+- 每个节点都将 op 记录为 log
+    - server 之间通过 log 可以快速比较状态(state)，过时的 server 可以快速同步
+- 正确性：每个节点都应该按照 log 顺序执行 op
+
+### VR overview: 如何切换主节点(primary-backup)
+![primary-backup](./image/primary-backup.png)
+- 通过 view number 来决定哪个节点是 primary
+- primary = view_number % total_servers
+
+### VR 正确性的条件
+- op 只有在被大多数节点执行后，才会被提交到 log 里
+- 一旦提交， op 在 log 中的位置就是固定的
+- 因此在 log 中同一个位置，不可能有不同的 op 
+
+### Q&A
+- Q: 如何防止两个 primary 在log相同位置提交不同的 op
+- A: Primary 在 commit 之前，必须等待规定的节点数
+(quorum n.法定人数)返回。
+- Example
+![vr1](./image/vr1.png)
+    1. S1 becomes primary of V1 
+    2. S1 commits OP1 at pos=1 on S1, S3 
+    3. S1 crash, S2 becomes primary of V2 
+    4. S2 tries to commit OP1’ at pos=1 
+    5. S3 also will receive request OP1’ at pos=1 
+
+    - 在 S2 成为 primary 的时候，必须知道上一个 view 的 log 是什么样的（问剩下的 majority 要 log）
+    - 但ppt这个例子不好，s1 崩了，s2 log不是最新，只有 s3 正常，这个时候正常的机器数量为 1，集群其实已经挂了……
