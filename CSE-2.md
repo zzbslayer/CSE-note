@@ -1238,7 +1238,7 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - primary = view_number % total_servers
 
 ### VR 正确性的条件
-- op 只有在被大多数节点执行后，才会被提交到 log 里
+- op 只有在被大多数节点执行后，才会被提交(commit)
 - 一旦提交， op 在 log 中的位置就是固定的
 - 因此在 log 中同一个位置，不可能有不同的 op 
 - view change 发生时，下一个 primary 应该先更新 log，保证自己的 log 是正确的
@@ -1330,3 +1330,49 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - 切换到新的 view V 的 primary ，一定能够获取到 viw V-1 所有提交过的 op
 
 ![vr-summary2](./image/vr-summary2.png)
+
+# lec 22 VR exercise
+## Exercise 1
+![vr-exercise-1](./image/vr-exercise-1.png)
+- 最后 view number 是多少? Primary 的 log 是什么样的？
+- 重点在于 S1, S2 什么时候 Recovery
+  - 第七步，S1 尝试 commit OP2,3,4，那么就需要大多数节点回复他，这个时候 S1 收到大多数的节点回复发现自己的 view 不是最新的，开始 Recovery。等 S4,S5 view change 做完，进入 NORMAL 状态后，S1 就可以继续 Recovery。(注意：此时 S2 没有收到其他节点的信息，不会发起 Recovery)
+![vr-exercise-1-1](./image/vr-exercise-1-1.png)
+![vr-exercise-1-2](./image/vr-exercise-1-2.png)
+![vr-exercise-1-3](./image/vr-exercise-1-3.png)
+![vr-exercise-1-4](./image/vr-exercise-1-4.png)
+![vr-exercise-1-5](./image/vr-exercise-1-5.png)
+  - S2 应该在 第八步 OP7 被提交时，进行的 Recovery。这时 S4 收到 OP 7 的请求，把 OP 7 发给各个节点，S2 这时才发现自己不是最新的 view，进行 Recovery
+![vr-exercise-1-6](./image/vr-exercise-1-6.png)
+![vr-exercise-1-7](./image/vr-exercise-1-7.png)
+
+## Exercise 2
+![vr-exercise-2](./image/vr-exercise-2.png)
+
+| curV | lastV | status |
+|------|-------|--------|
+| 1 | 1 | NORMAL |
+| 2 | 2 | NORMAL |
+| 2 | 2 | NORMAL |
+
+## Exercise 3
+![vr-exercise-3](./image/vr-exercise-3.png)
+
+(比如 S1 执行了 op 3，请求没发给 S2)
+
+| curV | lastV | status |
+|------|-------|--------|
+| 1 | 1 | NORMAL |
+| 1 | 1 | NORMAL |
+| 5 | 5 | NORMAL |
+| 5 | 5 | NORMAL |
+| 5 | 5 | NORMAL |
+
+## Exercise 4
+![vr-exercis-4](./image/vr-exercise-4.png)
+- op 2 & op 3 最终是否会被提交？
+- 如果是，给出最小的 commited latency (其实这题上课的时候他自己都说有问题……latency 涉及到具体实现，实现不同 latency 也不同)
+- 从 S1 断开连接，发生 viewchange 开始
+![vr-exercis-4-1](./image/vr-exercise-4-1.png)
+![vr-exercis-4-2](./image/vr-exercise-4-2.png)
+![vr-exercis-4-3](./image/vr-exercise-4-3.png)
