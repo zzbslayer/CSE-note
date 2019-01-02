@@ -370,8 +370,8 @@ structure packet{
     bit_string payload
 }
 ```
-```C
-procedure NETWORK_SEND (segment_buffer, destination, net_protocol, end_protocol)
+```python
+procedure NETWORK_SEND (segment_buffer, destination, net_protocol, end_protocol):
     packet instance outgoing_packet
     outgoing_packet.payload ← segment_buffer 
     outgoing_packet.end_protocol ← end_protocol 
@@ -379,14 +379,14 @@ procedure NETWORK_SEND (segment_buffer, destination, net_protocol, end_protocol)
     outgoing_packet.destination ← destination 
     NETWORK_HANDLE (outgoing_packet, net_protocol)
 
-procedure NETWORK_HANDLE (net_packet, net_protocol) 
+procedure NETWORK_HANDLE (net_packet, net_protocol):
     packet instance net_packet 
-    if net_packet.destination != MY_NETWORK_ADDRESS then
-    next_hop ← LOOKUP (net_packet.destination, forwarding_table)
-    LINK_SEND (net_packet, next_hop, link_protocol, net_protocol)
+    if net_packet.destination != MY_NETWORK_ADDRESS:
+        next_hop ← LOOKUP (net_packet.destination, forwarding_table)
+        LINK_SEND (net_packet, next_hop, link_protocol, net_protocol)
     else
-    GIVE_TO_END_LAYER (net_packet.payload, 
-    net_packet.end_protocol, net_packet.source)
+        GIVE_TO_END_LAYER (net_packet.payload, 
+        net_packet.end_protocol, net_packet.source)
 ```
 
 ### 前向传播 IP packet
@@ -465,11 +465,11 @@ procedure NETWORK_HANDLE (net_packet, net_protocol)
     - **ETHERNET_HANDLE**
         - 十分简单，甚至可以在硬件中来实现
 
-```C
-// No need to do any forwarding
-procedure ETHERNET_HANDLE (net_packet, length)
+```python
+# No need to do any forwarding
+procedure ETHERNET_HANDLE (net_packet, length):
     destination ← net_packet.target_id
-    if (destination == my_station_id or destination == BROADCAST_ID ) 
+    if (destination == my_station_id or destination == BROADCAST_ID ):
         GIVE_TO_END_LAYER (net_packet.data, 
                         net_packet.end_protocol, 
                         net_packet.source_id)
@@ -664,13 +664,13 @@ Best-effort is not enough
 - 计算 RTT 和 Timeout (in TCP)
 - Exponentially weighted moving average
     - 估计均值 `rtt_avg` 和方差 `rtt_dev`
-    ```C
-    Procedure calc_rtt(rtt_sample)
-        rtt_avg = a*rtt_sample + (1-a)*rtt_avg; /* a = 1/8 */  
+    ```python
+    Procedure calc_rtt(rtt_sample):
+        rtt_avg = a*rtt_sample + (1-a)*rtt_avg; ''' a = 1/8 '''
         dev = absolute(rtt_sample – rtt_avg); 
-        rtt_dev = b*dev + (1-b)*rtt_dev;  /* b = 1/4 */  
+        rtt_dev = b*dev + (1-b)*rtt_dev;  ''' b = 1/4 ''' 
 
-    Procedure calc_timeout(rtt_avg, rtt_dev)
+    Procedure calc_timeout(rtt_avg, rtt_dev):
         Timeout = rtt_avg + 4*rtt_dev
     ```
 
@@ -1086,13 +1086,13 @@ Reliable System from Unreliable Components
     - Arm moves to a wrong track
 
 ### ALL_OR_NOTHING_PUT
-```C
-procedure ALMOST_ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
+```python
+procedure ALMOST_ALL_OR_NOTHING_PUT (data, all_or_nothing_sector):
     CAREFUL_PUT (data, all_or_nothing_sector.S1)
     CAREFUL_PUT (data, all_or_nothing_sector.S2)	
     CAREFUL_PUT (data, all_or_nothing_sector.S3)
 
-procedure ALL_OR_NOTHING_GET (reference date,all_or_nothing_sector)
+procedure ALL_OR_NOTHING_GET (reference date,all_or_nothing_sector):
     CAREFUL_GET (data1, all_or_nothing_sector.S1)
     CAREFUL_GET (data2, all_or_nothing_sector.S2)
     CAREFUL_GET (data3, all_or_nothing_sector.S3)
@@ -1101,11 +1101,11 @@ procedure ALL_OR_NOTHING_GET (reference date,all_or_nothing_sector)
     else  
         data ← data3
 
-procedure ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
+procedure ALL_OR_NOTHING_PUT (data, all_or_nothing_sector):
     CHECK_AND_REPAIR (all_or_nothing_sector)
     ALMOST_ALL_OR_NOTHING_PUT (data, all_or_nothing_sector)
 
-procedure CHECK_AND_REPAIR (all_or_nothing_sector)				                            // Ensure copies match
+procedure CHECK_AND_REPAIR (all_or_nothing_sector):			                            # Ensure copies match
     CAREFUL_GET (data1, all_or_nothing_sector.S1)
     CAREFUL_GET (data2, all_or_nothing_sector.S2)
     CAREFUL_GET (data3, all_or_nothing_sector.S3)
@@ -1603,3 +1603,388 @@ Paxos 解决了 consensus 的问题(其实vr也是)。我们先不看 Paxos 具�
   - S3
   - Dynamo
   - MySQL with async replication
+
+# lec 24 Transaction
+New Abstraction: Atomicity & Isolation
+
+原子性与独立性
+
+## Transaction
+### 目标
+- 目标: 在不可靠的组件上建立可靠的系统（容错）
+- 为了实现这个目标，之前我们提出了 Consistency
+- 现在提出两个新的 abstraction: Atomicity 和 Isolation
+
+- Example
+![transaction-1](./image/transaction-1.png)
+- Atomicity: All-or-nothing. T1 T2 要么运行完毕，要么根本没执行
+- Isolation: 同步执行时，T1 T2 表现的像串行执行一样
+- 这两点能够帮助解释 failures( and concurrency)
+
+### Commit Point
+![commit-point](./image/commit-point.png)
+
+- Example
+    - Where is the commit point?
+    ![commit-point-ex](./image/commit-point-ex.png)
+    - between 5 and 6
+
+## Shadow Copy
+
+### Example: Bank Account Transfer
+```python
+xfer(bank, a, b, amt):
+    # sum = 200
+    bank[a] = bank[a] – amt
+    # Here is the problem
+    # sum = 150 
+    bank[b] = bank[b] + amt 
+    # sum = 200
+
+audit(bank):
+    sum = 0
+    for acct in bank:
+        sum = sum + bank[acct]
+    return sum
+```
+
+修改 xfer：在当前数据的 copy 上先做修改，修改完后，用 copy 覆写当前数据。（word, vim 等编辑器也采用这种方法）
+
+```python
+xfer(bank, a, b, amt):
+    bank[a] = read_accounts(bankfile)
+    bank[a] = bank[a] – amt
+    bank[b] = bank[b] + amt
+    write_accounts("#bankfile") 
+    rename("#bankfile", bankfile)
+```
+
+#### First Try: rename 初步实现
+
+- Step 1:
+    - Directory data blocks:
+        - filename "bank" → inode 12
+        - filename "#bank" → inode 13
+    - inode 12:
+        - data blocks: 3, 4, 5
+        - refcount: 1
+    - inode 13:
+        - data blocks: 6, 7, 8
+        - refcount: 1
+- Step 2: 简略起见，只写出有修改的部分
+    - Directory data blocks:
+        - filename "bank" → inode 13
+- Step 3:
+    - inode 13:
+        - refcount: 2
+- Step 4:
+    - inode 12:
+        - refcount: 0
+- Step 5:
+    - Directory data blocks:
+        - filename "bank" → inode 12
+        - ~~filename "#bank" → inode 13~~
+- Step 6:
+    - inode 13:
+        - refcount: 1
+
+问题：如果崩溃了，哪一个 step 会引起问题？
+- Step 2 就有问题
+    - 两个 file 都指向 inode 13，但是 inode 13 的 refcount = 1，哪一个才是正确的？
+
+#### Second Try: Increase ref-count first
+```python
+rename(x, y):
+   newino = lookup(x)
+   oldino = lookup(y)
+
+   incref(newino)
+   ... # change y's dirent to newino
+   decref(oldino)
+   ... # remove x's dirent
+   decref(newino)
+```
+
+Q：commit point 在哪里 ?
+A：修改 y 的 dirent 之后。
+
+#### Recovery After Crash
+```python
+salvage(disk):
+  for inode in disk.inodes:
+    inode.refcnt =
+      find_all_refs(disk.root_dir, inode)
+  if exists("#bank"):
+    unlink("#bank")
+```
+
+### Shadow Copy
+- 写入都发生在数据的拷贝中，写完后将当前数据切换到拷贝中
+- 因为切换(switching)是可以用一步 all-or-nothing 的操作(sector write)实现
+- 需要底层的一些原子性实现的支持(disk)
+- Main rule: 只对一份 copy 作一次写入
+    - In our example: serctor write for rename
+    - Creates a well-defined commit point
+
+- Shadow Copy 是否能满足各种应用场景？
+    - Pros
+        - Works well for a single file
+    - Cons
+        - Hard to generalize to multiple files or directories
+            - Might have to place all files in a single directory, or rename subdirs
+        - Requires copying the entire file for any (small) change
+        - Only one operation can happen at a time
+        - Only works for operations that happen on a single computer, single disk
+
+## Logging for all-or-nothing
+- Transactions 提供了 atomicity & isolation 两种抽象，能够使得我们的目标更容易实现，但是并不保证性能
+![logging-for-atomicity](./image/logging-for-atomicity.png)
+
+- 而且我们希望 transaction-based system 能够在分布式地使用
+
+### Example: Bank Account App (Shadow Copy)
+```python
+xfer(bank, a, b, amt):
+	copy(bank, tmp)
+	tmp[a] = tmp[a] – amt
+	tmp[b] = tmp[b] + amt
+	rename(tmp, bank)
+```
+
+### Transaction Terminology
+![bank-transaction](./image/bank-transaction.png)
+
+
+- Two accounts: A and B
+    - Accounts start out empty
+    - Run these all-or-nothing actions
+![bank-crash](./image/bank-crash.png)
+- Problem
+    - After crash, A=110, but T3 never committed
+- Solution
+    - Revert to A's previous committed value
+    - T1 and T2: "All"
+    - T3: "Nothing"
+
+
+### Log
+- A log sample
+![log-sample](./image/log-sample.png)
+
+- 共涉及到五个操作
+    - Begin
+    - Write variable
+    - Read variable
+    - Commit
+    - Abort
+1. Begin: allocate a new transaction ID
+2. Write variable: append an entry to the log
+3. Read
+    - As an aside: how to see your own updates?
+    - Read uncommitted values from your own TID
+
+```python
+read(log, var): 
+  commits = {} 
+  # scan backwards 
+  for record r in log[len(log) - 1] .. log[0]:
+    # keep track of commits 
+    if r.type == commit: 
+      commits.add(r.tid) 
+      # find var's last committed value 
+      if r.type == update and
+         r.tid in commits and 
+         r.var == var: 
+           return r.new_value 
+```
+
+```python
+read(log, var): 
+  commits = {} 
+  # scan backwards 
+  for record r in log[len(log) - 1] .. log[0]:
+    # keep track of commits 
+    if r.type == commit: 
+      commits.add(r.tid) 
+      # find var's last committed value 
+      if r.type == update and
+        (r.tid in commits or r.tid == current_tid) and 
+         r.var == var: 
+           return r.new_value 
+
+```
+4. Commit: write a commit record
+    - 我们希望每从 commit record 都是这次操作的 Commit Point
+    - However, writing log records better be all-or-nothing
+        - One approach, from last time: make each record fit within one sector
+5. Abort: Do nothing or write a record?
+    - 我们目前这种方式，可以写入一个 abort 记录，但是没必要
+
+- Recover from crash: do nothing
+
+### 性能优化
+- Keep both a log and cell storage(类似于 cache)
+    - Log as before: authoritative, provides all-or-nothing atomicity
+    - Cell storage: provides fast reads, but cannot provide all-or-nothing
+    - Both are stored on disk
+
+### Terminology
+- "log" an update when it's written to the log
+- "install" an update when it's written to cell storage
+
+### Cell Storage
+![cell-storage](./image/cell-storage.png)
+
+### Read / Write with Cell Storage
+- 一个 update 来了以后，如何同时更新 log 和 cell storage ?
+- 崩溃以后，如何根据 log 恢复 cell storage
+    - 尤其是在 logging 和 installing 之间崩溃
+
+![cell-storage-1](./image/cell-storage-1.png)
+
+```python
+read(var):
+    return cell_read(var)
+
+write(var, value):
+    log.append(cur_tid, update, var, read(var), value)
+    cell_write(var, value)
+```
+
+### Order Matters
+- logging 和 installing 的顺序
+    - The logging and installing together do not have all-or-nothing atomicity
+    - 很可能发生在两者之间
+- 如果我们先 install 后 log
+    - 崩溃的话，没法复原 cell storage
+- 定义 logging 的规则 "Write-ahead-log protocol" (WAL)
+    - 先 log 再 install
+- 如果崩溃以后，log 是完好且可靠的，能够用 log 来修复 cell storage
+
+### Recovering Cell Storage
+- 现在我们先 log 后 install
+    - 如果此时 abort/crash 了，就应该 undo
+    - Plan: 扫描整个 log，决定哪些 actions 应该被 abort，把它们 undo
+- 从后往前扫描
+    - 需要从最新的一直 undo 到最旧的
+    - 在我们决定要 undo 之前，需要先知道这些 action 的结果
+
+```python
+1   recover(log): 
+2       commits = {} 
+3       for record r in log[len(log)-1] .. log[0]: 
+4           if r.type == commit:
+5               commits.add(r.tid) 
+6           elif r.type == update and r.tid not in commits:
+7               cell_write(r.var, r.old_val) # undo 
+```
+
+![recovery-with-cell-storage](./image/recovery-with-cell-storage.png)
+执行 4, 6, 7 行。将 A undo 为 80
+
+![recovery-with-cell-storage-1](./image/recovery-with-cell-storage-1.png)
+执行 4, 5 行。将 T2 加入 commit
+
+![recovery-with-cell-storage-2](./image/recovery-with-cell-storage-2.png)
+同理执行 4, 5 行。将 T1 加入 commit
+
+![recovery-with-cell-storage-3](./image/recovery-with-cell-storage-3.png)
+
+### Performance Now
+- **Write**s might still be OK
+    - but we do write twice: log & install
+- **Read**s are fast
+    - look up the cell storage
+- **Recovery** requires scanning the entire log
+- Remaining performance problems
+    - We have to write to disk twice
+    - Scanning the whole log will take longer as the log grows
+
+### Optimization 1: Improve Writes
+- 将 cell storage 存在 volatile cache, e.g. memory
+    - 写入也可以很快：just one write instead of two
+    - Hope that variable is modified several times in cache before flush
+
+- Reads 同样更快
+    - Reads go through the cache, since cache may contain more up-to-date values
+
+- Read & Write with Cache
+![cell-storage-2](./image/cell-storage-2.png)
+```python
+read(var):
+  if var in cache:
+    return cache[var]
+  else: # may evict others from cache to cell storage
+    cache[var] = cell_read(var)
+    return cache[var]
+write(var, value):
+  log.append(current_tid, update, var, read(var), value)
+  cache[var] = value
+```
+
+- Problem Brought by Cache
+- Atomicity problem: cell storage (on disk) may be **out-of-date**
+    - 是否有可能，有些本来应该在 cell storage 里的改变，没在里面？
+        - Yes: might not have flushed the latest commits
+    - 是否有可能，有些本来不应该再 cell storage 里的改变，在里面
+        - Yes: flushed some changes that then aborted (same as before)
+- Solution: change the recover procedure
+    - 除了 undo 还需要 redo
+    - undo 倒序；redo 正序
+    - Do not treat actions with an abort record as "done"
+        - There might be leftover changes from them in cell storage
+- Recover with Cache
+![recover-with-cache](./image/recover-with-cache.png)
+```python
+recover(log):
+  commits = {}
+  for record r in log[len(log)-1] .. log[0]:
+    if r.type == commit:
+      commits.add(r.tid)
+    if r.type == update and r.tid not in commits:
+      cell_write(r.var, r.old_val) # undo
+  for record r in log[0] .. log[len(log)-1]:
+    if r.type == update and r.tid in commits:
+      cell_write(r.var, r.new_value) # redo
+```
+
+### Optimization 2: 截短日志 Truncate the Log
+- 现在 log 会无限增长: not practical
+    - 哪部分 log 能够被丢弃？
+        - Must know the outcome of every action in that part of log
+        - Cell storage must reflect all of those log records (commits, aborts).
+    - Truncating mechanism (assuming no pending actions):
+        - Flush all cached updates to cell storage
+        - Write a **checkpoint** record, to save our place in the log
+        - Truncate log prior to checkpoint record
+        - (Often log implemented as a series of files, so can delete old log files)
+    - With pending actions, delete before checkpoint & earliest undecided record
+
+### Checkpointing
+- Do the following:
+    - (Prepare) Stop accepting new transactions
+    - (Prepare) Wait until all current transactions commit or abort and have written the COMMIT or ABORT to the log
+    - (Checkpointing) Flush the log to disk
+    - (Checkpointing) Write a log record <CKPT> and flush the log again
+    - (End) Resume accepting transactions
+
+- Problem with checkpointing
+    - The system must be **stop**ped until operations have committed or aborted
+### **Non-quiescent** checkpointing (动态 checkpoint)
+- Write a record <START CKPT(T1…Tk)> and flush log (T1,…Tk are the active transactions)
+- Wait until all of T1, … Tk commit or abort, but allow new transactions to start
+- When all of T1,…Tk have written COMMIT or ABORT, then write <END CKPT> to the log
+
+- If crash, then look backwards for the first <START CKPT(T1…Tk)> or <END CKPT>
+    - If see an <END CKPT>, only have to consider after this
+    - If see a <START CKPT(T1…Tk)> but no <END CKPT>, then only need to consider after the transactions T1, .. Tk began
+
+### Optimization-3: External Synchronous I/O
+- Problem: flush to disk is slow
+    - Lazy writing, even for the log file
+    - some app, e.g. database, calls syns() to ensure flushing
+    - But sync() is slow...
+- Solution: External Sync
+    - Once the kernel return from sync(), the file may not be flushed. 
+    - It will be flushed if something externally visible happens
+        - e.g. print to the user, network sending, serial port outcome, etc.
