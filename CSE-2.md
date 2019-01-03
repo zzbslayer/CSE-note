@@ -40,7 +40,7 @@ As a component and as a system itself
         - IP 地址
     - 协议
         - IP ICMP
-    - 整个网络视作一个图，网络层关注的是下一个节点哪个（由路由表决定）
+    - 整个网络视作一个图，网络层关注的是下一个节点哪个（由 Forwarding Table 决定）
 - 链路层(Link Layer(& Physical Layer)) (**frame**(&**bit**))
     ![frame](./image/frame.jpg)
     - Network Entities
@@ -98,10 +98,11 @@ As a component and as a system itself
 
 - Voltage Controlled Oscillator
     - 这种硬件本质上是作为 receiver 的 clock source。原理略。
-- 问题：在 stream 中如果没有数据传输（e.g.  全是 0），VCO 的 phase-locked loop 将会无法同步。
+    - 总之，使用 VCO 就能够让 B 采集到 A 传输过来的信号
+- VCO 的问题：在 stream 中如果没有数据传输（e.g.  传输的 bit 全是 0），VCO 的 phase-locked loop (不用关注这是什么，这就是 VCO 原理中的一步，感兴趣可以自己看 ppt) 将会无法同步。
 
 ### 曼彻斯特编码 （Manchester Code）
-为了解决传输中全零导致的问题，将每个byte编码，保证传输。
+为了解决 VCO 的这个问题，将每个byte编码，保证传输。
 
 - 0 => 01, 1 => 10
 - 最大数据传输率减半，但是这种方法简单有效
