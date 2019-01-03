@@ -153,10 +153,6 @@ As a component and as a system itself
     - Header 包括目的地
     - 交换机里有一个 forwarding table，根据这个表选择经由哪个链路到目的地
 
-### Framing Frames
-
-没看懂这页ppt讲啥，问了CS的，他们计算机网络也没讲这么细
-
 ### 错误处理（Error Handling）
 - 错误检测的代码
     - 冗余数据
@@ -1410,7 +1406,7 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - per-thread issue(or completion)
   - 只要求每个 thread 内部的 issue(or completion) 顺序符合
 - Global completion-to-issue order
-  - 以下图为例，global completion-to-issue order 只要求头尾完全错开的 
+  - 以下图为例，global completion-to-issue order 只要求头尾完全错开的任务，图中的 Put(x,1) 在 Get(x)=0 前面即可。
   ![global-completion-to-issue](./image/global-completion-to-issue.png)
 
 然而保证 global issue/completion order 很不切实际。
