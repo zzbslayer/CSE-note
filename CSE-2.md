@@ -1577,7 +1577,7 @@ Paxos 解决了 consensus 的问题(其实vr也是)。我们先不看 Paxos 具�
   ![multi-paxos-12](./image/multi-paxos-12.png)
   - 米奇给唐老鸭发 accept 1 and 2
   ![multi-paxos-13](./image/multi-paxos-13.png)
-  - 米奇之前受到来自米妮的 h_n=1 的 shopping，仅仅是记录 h_n=1 并没有 commit。此时他自己 propose ，提议h_n=2 的 shopping(之前提到的，if p > p', then p'.value = p.value)
+  - 米奇之前受到来自米妮的 h_n=1 的 shopping，仅仅是记录 h_n=1 并没有 commit。此时他自己 propose ，提议h_n=2 的 shopping
   ![multi-paxos-14](./image/multi-paxos-14.png)
   - 唐老鸭返回 OK，米奇这里确认 majority 写入了，因此 commit Shopping & Karaoke
   ![multi-paxos-15](./image/multi-paxos-15.png)
