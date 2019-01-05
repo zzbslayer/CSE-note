@@ -948,7 +948,8 @@ Reliable System from Unreliable Components
     - 软件仅仅记录检测到而未被纠正的错误
 - Lesson-3：
     - Safety margin principle ? 
-    - " It's good to learn from your mistakes.    It's better to learn from other people's mistakes." 
+    - " It's good to learn from your mistakes. 
+   It's better to learn from other people's mistakes." 
 - Alto 之后又开发了 Alto-2
     - 使用了新的 4096 bits 的内存条
     - Single-error-correction, double-error-detection，与MAXC相同
@@ -1126,9 +1127,11 @@ CAREFUL_PUT (data1, all_or_nothing_sector.S3  // State 5, go to state 7
 - 磁盘阵列: 多个磁盘 replica
     - 这里的例子总共两个磁盘
 - Tolerated error
-    - Hard errors reported by careful layer are masked by reading from other replicas
+    - Hard errors reported by careful layer are 
+masked by reading from other replicas
 - Untolerated error
-    - Decay on the same sector of all the replicas, status = BAD
+    - Decay on the same sector of all the replicas, 
+status = BAD
     - OS crashes during a DURABLE_PUT
     - Decay in a way that is undetectable
 
@@ -1632,7 +1635,7 @@ New Abstraction: Atomicity & Isolation
 ```python
 xfer(bank, a, b, amt):
     # sum = 200
-    bank[a] = bank[a] – amt
+    bank[a] = bank[a] – amt
     # Here is the problem
     # sum = 150 
     bank[b] = bank[b] + amt 
@@ -1641,7 +1644,7 @@ xfer(bank, a, b, amt):
 audit(bank):
     sum = 0
     for acct in bank:
-        sum = sum + bank[acct]
+        sum = sum + bank[acct]
     return sum
 ```
 
@@ -1650,7 +1653,7 @@ audit(bank):
 ```python
 xfer(bank, a, b, amt):
     bank[a] = read_accounts(bankfile)
-    bank[a] = bank[a] – amt
+    bank[a] = bank[a] – amt
     bank[b] = bank[b] + amt
     write_accounts("#bankfile") 
     rename("#bankfile", bankfile)
@@ -1692,14 +1695,14 @@ xfer(bank, a, b, amt):
 #### Second Try: Increase ref-count first
 ```python
 rename(x, y):
-   newino = lookup(x)
-   oldino = lookup(y)
+   newino = lookup(x)
+   oldino = lookup(y)
 
-   incref(newino)
-   ... # change y's dirent to newino
-   decref(oldino)
-   ... # remove x's dirent
-   decref(newino)
+   incref(newino)
+   ... # change y's dirent to newino
+   decref(oldino)
+   ... # remove x's dirent
+   decref(newino)
 ```
 
 Q：commit point 在哪里 ?
@@ -1711,7 +1714,7 @@ salvage(disk):
   for inode in disk.inodes:
     inode.refcnt =
       find_all_refs(disk.root_dir, inode)
-  if exists("#bank"):
+  if exists("#bank"):
     unlink("#bank")
 ```
 
@@ -1841,7 +1844,7 @@ read(log, var):
 
 ```python
 read(var):
-    return cell_read(var)
+    return cell_read(var)
 
 write(var, value):
     log.append(cur_tid, update, var, read(var), value)
@@ -1985,3 +1988,151 @@ recover(log):
     - Once the kernel return from sync(), the file may not be flushed. 
     - It will be flushed if something externally visible happens
         - e.g. print to the user, network sending, serial port outcome, etc.
+
+# lec 26
+- Serializability
+    - Final-state serializability
+    - Conflict serializability
+    - View serializability
+
+## Conflict serializability
+- Two operations conflict if :
+    - they operate on the same object, and 
+    - at least one of them is write
+    - the actions belong to different transactions
+![conflict](./image/conflict.png)
+
+## Conflict Graph
+- Nodes are transactions, edges are directed
+- Edge between Ti and Tj if and only if:
+    - Ti and Tj have a conflict between them and
+    - the first step in the conflict occurs in T i
+- 如果某个排序的 Conflict Graph 是有向无环图，那么它满足 Conflict Serializability
+
+![conflict1](./image/conflict1.png)
+![conflict2](./image/conflict2.png)
+![conflict3](./image/conflict3.png)
+![conflict4](./image/conflict4.png)
+
+### View Serializability
+![view-serializability](./image/view-serializability.png)
+- 定义
+    - A schedule is view serializable if the final written state as well as intermediate reads are the same as in some serial schedule
+![serializability](./image/serializability.png)
+
+### 为什么关注 Conflict Serializability
+- Conflict serializability is easy to test
+    - 检验有向图是否成环很简单
+    - 检验 View serializability 是 NP-hard
+- Conflict serializable schedules are easy to generate
+    - Using 2-phase locking
+- Conflict serializable schedules are also view serializable
+- Schedules that are view serializable but not conflict serializable involve blind writes: 
+    - Blind writes: writes that are ultimately not read, which are not common in practice
+
+## Generate Conflict-Serializable Schedules
+### How to generate
+- 悲观
+    - 假设许多干扰
+    - 主动防止冲突产生
+    - 2-phase locking
+- 乐观
+    - 允许任何写入
+    - 检查冲突，如果有，则 abort
+    - e.g. OCC
+
+### Global Lock
+- 全局一把锁
+- 略
+
+### Simple Locking
+- Simple locking
+    - 提前获取每个共享变量的锁
+    - commit 或 abort 之后放锁
+- Lock point
+    - Lock set: locks acquired when reaches lock point
+    - ock manager's enforcement
+        - Intercept read/write/commit/abort, and check
+- Problem
+    - How to enumerate all shared object to access?
+    - The set of might-access may be larger than does-access
+
+### Two-phase Locking
+- 每个共享变量都有锁
+- 每个transaction在做操作之前，先把对应的锁那好
+- transaction 一旦放锁，就再也不能拿锁
+
+### 优化：读写锁 Read-write locks
+- 多个 reader ，单个 writer
+    - 适合有大量读操作的应用
+    - A writer may be delayed indefinitely
+    - Can release reader-locks after lock point (may before commit)
+
+### 2PL 证明
+![proof-of-2pl](./image/proof-of-2pl.png)
+
+### 2PL 会导致死锁
+- Solution
+    - global ordering on locks
+    - or just abort one transaction
+
+## OCC
+### Concurrency Control(CC)
+- CC 保证同步操作的正确性
+    - 保证 serializability
+    - high throughput and scalability
+
+### OCC Executes a Transaction in Three Phases
+- Phase 1:Concurrent local processing  
+    - 要读的变量读进 read set
+    - 要写的变量写进 write set
+- Phase 2:  Validation in critical section
+    - 检查 serializability 是否满足:
+        - Has any tuple in the read set been modified?
+- Phase 3: Commit the results in critical section or abort
+    - Aborts: aborts the transaction if validation fails
+    - Commits: installs the write set and commits the transaction
+- Example
+![occ-example](./image/occ-example.png)
+
+- Advantage
+    - 竞争较少时，性能很好
+
+### Data Dependencies
+- wr: T2 reads a tuple that was earlier written by T1
+- ww: T2 writes a tuple that was earlier written by T1
+- rw: T1 reads a tuple that was later written by T2
+
+### OCC: Serializable Scope
+- Ensures serializability by breaking the incoming RW edge of the earliest committed transaction in a possible cycle
+![serializable-scope](./image/serializable-scope.png)
+
+### Problem: False Aborts
+- 一些被 OCC abort 的 transaction 可能并没有打破 serializability
+![false-abort](./image/false-abort.png)
+
+### Transactional Memory
+- 大多都提供
+    - Opportunistic concurrency
+    - Strong atomicity: read set & write set
+    - Semantic of both *all-or-nothing* and *before-or-after*
+- Real-world best-effort TM
+    - Limited read/write set
+    - System events may abort an TX (TX? maybe TM)
+
+### Programming with RTM
+- If transaction start successfully
+    - Do work protected by RTM, and then try to commit
+- Fallback routine to handle abort event
+    - If abort, system rollback to _xbegin, return an abort code
+- Manually abort inside a transaction
+
+```python
+if _xbegin() == _XBEGIN_STARTED: 
+    if conditions:
+        _xabort()
+    critical code
+    _xend()
+else
+    fallback routine
+```
