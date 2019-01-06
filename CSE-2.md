@@ -2524,3 +2524,286 @@ verify(public_key, message, sig) -> yes/no
     - Query online server to check certificate freshness?  Not a bad idea   
 - Alternative: avoid CAs by using public keys as names (protocols: SPKI/SDSI)
     - Works well for names that users do not have to remember/enter
+
+# lec 29 
+ROP & CFI & More
+
+## Secret on device
+### 窃取密码的若干方式
+- KeyLogger
+- Phnishing
+- MemScan
+- ScreenCapture
+- Cold-boot: physically attack that can scan memory to get any plaintext
+- Side-Channel
+    - 比如陀螺仪
+
+### CleanOS
+![cleanOS](./image/cleanOS.png)
+
+1. Tracks data in SDOs using taint tracking 
+2. Evicts SDOs to a trusted cloud whenever idle
+3. Decrypts SDO data when it is accessed again
+
+### TinMan
+- 将关键数据的访问交给受信任的节点来做
+
+![TinMan](./image/TinMan.png)
+
+### Stack Buffer Overflow
+- 恶意代码注入
+- 覆写 return address
+```C
+void function(char *str) {
+   char buf[16];
+   strcpy(buf,str);
+}
+```
+
+### Defense:Data Execution Prevention
+- Data areas 不可执行
+    - 栈不可执行
+    - 堆不可执行
+- 或者通过硬件强制实现
+
+### Attack: Code Reuse(instead of inject) Attack
+- ROP: Return-oriented Programming
+- return 到已有的某些代码，而不是自己注入代码
+
+- ROP Example
+    - 目标得到 Mem[v2]=v1
+    ```
+    mov %eax v1
+    mov %ebx v2
+    mov [%ebx], %eax
+    ```
+    - in stack
+    ---------
+    | Stack |
+    |-------|
+    | a3 |
+    | v2 |
+    | a2 |
+    | v1 |
+    ```
+    a1: pop eax; ret
+    a2: pop ebx; ret
+    a3: mov [ebx], eax
+    ```
+    - 执行 a1，将 v1 放到 eax，return
+    - 执行 a2，将 v2 放到 ebx，return
+    - 执行 a3，move 
+
+### Defense
+- Hide the binary file
+    - No way to get any gadget
+    - 只有自己写的闭源软件才可能
+- ASLR 使代码位置随机化
+    - Address Space Layout Randomization
+    - 使得攻击更难
+- Canary
+    - 尝试取检测 stack overflow
+
+### ASLR
+- 改变内存空间布局
+- 每次创建一个进程
+    - 但是 fork 呢？
+- User-level and Kernel-level
+
+### Canary
+![canary](./image/canary.png)
+
+- canary 就是个随机数
+- return 之前检查一下 canary
+
+- StackGuard 作为 gcc 的一个补丁被实现
+    - 程序必须被 recompiled
+    - Performance overhead: 8% for Apache
+
+## CFI: Control Flow Integrity
+### CFI
+- Main idea: pre-determine control flow graph (CFG) of an application
+    - Static analysis of source code
+    - Static binary analysis
+    - Execution profiling
+    - Explicit specification of security policy
+- Execution must follow the pre-determined control flow graph
+
+![cfi-idea](./image/cfi-idea.png)
+
+### Branch Types
+- Direct Branches
+    - Direct call
+    - Direct jump
+- Indirect Branches
+    - Return
+    - Indirect call
+    - Indirect jump
+
+![apache-branch](./image/apache-branch.png)
+
+### CFI: Binary Instrumentation
+- 目标：即使攻击者对于线程地址空间有绝对控制权，也要保证安全
+- Use binary rewriting to instrument code with runtime checks
+- Inserted checks ensure that the execution always stays within the statically determined CFG
+- Whenever an instruction transfers control, destination must be valid according to the CFG
+
+### CFG-example
+![cfg-example](./image/cfg-example.png)
+
+- For each control transfer, determine statically its possible destination(s)
+- 每个 destination 都有一个自己的编号。上图中的 label
+    - Two destinations are equivalent if CFG contains edges to each from the same source
+        - This is imprecise (why?)
+            - 之后会讲
+    - Use same bit pattern for equivalent destinations
+- Insert binary code that at runtime will check whether the bit pattern of the target instruction matches the pattern of possible destinations
+
+![cfi-instrumentation](./image/cfi-instrumentation.png)
+
+### Improving CFI Precision
+- Suppose a call from A goes to C, and a call from B goes to either C, or D (when can this happen?)
+    - CFI will use the same tag for C and D, but this allows an "invalid" call from A to D
+    - Possible solution: duplicate code or inline
+    - Possible solution: multiple tags
+
+## Minimize TCB
+
+Principle of Least Privilege
+
+### TCB: Trusted Computing Base
+- TCB is the parts that are trusted
+    - Process never trust another process, but trusts all its threads
+    - OS never trust a process, but trusts hardware
+    - VMM never trust a VM, but trust hardware
+- For most of the time, TCB is the only metric of security
+
+### TPM: Trusted Platform Module
+- TPM functions and storage are isolated from all other components of the platform (e.g., the CPU)
+
+- Sealed storage for private key
+    - Physically safe (for most of the time)
+- Sign with the private key
+    - For remote attestation
+- Measure with hash chain
+    - For local trust-chain
+
+### Overshadow: Untrusted OS
+
+- Iago Attack: mmap() (Normal)
+![mmap-normal](./image/mmap-normal.png)
+- (Malicious)
+![mmap-malicious](./image/mmap-malicious.png)
+
+### Goal of CloudVisor
+- 不相信 Hypervisor
+- Defend again curious or malicious cloud operators
+    - To ensure privacy and integrity of a user VM
+- Be transparent to existing cloud infrastructure
+    - No or little modifications to virtualization stack (OS, Hypervisor)
+- Minimized TCB
+    - Easy to verify correctness (e.g., formal verification)
+
+![without-cloudvisor](./image/without-cloudvisor.png)
+
+![with-cloudvisor](./image/with-cloudvisor.png)
+
+### VM memory isolation
+- Goal: 禁止 hypervisor 访问 VM 的内存
+- Rules: 
+    - When a page is assigned to a VM, CloudVisor changes the ownership of the page
+    - A memory page is only accessible to its owner
+
+### Intel SGX: Isolated Execution
+![intel-sgx](./image/intel-sgx.png)
+
+- data/code 存在 enclave 中
+- 由 cpu 解密
+
+- Vulnerability
+    - Side channel attack
+        - Malicious OS still controls page fault handler
+        - If know the photo processing algorithm, can get the image by monitoring page fault
+        - Not 100% accurate, but still good enough
+
+## Rowhammer Attack
+![rowhammer-attack1](./image/rowhammer-attack1.png)
+![rowhammer-attack2](./image/rowhammer-attack2.png)
+
+### Security Implication
+- Breach of memory protection
+    - OS page (4KB) fits inside DRAM row (8KB)
+    - Adjacent DRAM row -> Different OS page
+- Vulnerability: disturbance attack
+    - 通过访问一个程序自己的 page，可以影响其他程序的 page
+
+### Naive Solutions
+- 限制访问
+    - Limit access-interval >= 500 ms
+    - Limit number of accesses <= 128K (=64ms/500ns)
+- Refresh more frequently
+    - Shorten refresh-interval by ~7x
+- 都有性能上的 overhead
+
+### 其他可能的解决方案
+![solution-of-rowhammer](./image/solution-of-rowhammer.png)
+（ECC：Error Correcting Code）
+
+### PARA Solution
+- PARA：Probabilistic Adjacent Row Activation
+- Key Idea
+    - After closing a row, we activate (i.e., refresh) one of its neighbors with a low probability: p = 0.005
+- Reliability Guarantee
+    - When p=0.005, errors in one year: 9.4×10-14
+    - By adjusting the value of p, we can provide an arbitrarily strong protection against errors
+
+- Advantage
+    - 低频率刷新
+        - Low power
+        - Low performance-overhead
+    - 无状态
+        - Low cost
+        - Low complexity
+
+## Meltdown & Spectre
+### Meltdown
+- Break user/kernel isolation
+    - Allow attacker to read arbitrary kernel data
+
+- Hardware bug in architecture
+    - Hard to be fixed by micro-code patch
+
+- Exist in almost all Intel CPUs produced in past 20 years
+
+### Cache-based side channels
+![cache-based-side-channels](./image/cache-based-side-channels.png)
+
+### Meltdown
+![meltdown1](./image/meltdown1.png)
+
+![meltdown2](./image/meltdown2.png)
+
+- 攻击者发现 buf[1] 在 cache 中，所以 key 就是 1
+
+### Existing Solution： KPTI
+- KPTI (Kernel Page Table Isolation)
+    - Two page tables for user and kernel space
+        - User page table only maps user space
+        - Kernel page table maps both user and kernel space
+    - Switch the page table during user/kernel switching
+        - Add latency to syscalls, signal handler,…
+
+- Not suitable for the cloud environment
+
+- Better one?
+
+### Spectre
+- Classic side-channel attack w/ deep micro-arch info
+1. Attacker primes micro-architecture
+    - E.g, branch predictor or branch target buffer for saving secret
+    - E.g., cache for recalling secret
+2. Victim loads secret under mis-speculation
+    - Load should NOT trap (unlike Meltdown)
+    - Still inappropriate if managed language or sandbox
+3. Victim saves secret in micro-arch state, e.g., cache
+4. Attacker recalls secret from micro-arch state; 4: repeat.
