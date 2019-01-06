@@ -2136,3 +2136,391 @@ if _xbegin() == _XBEGIN_STARTED:
 else
     fallback routine
 ```
+
+# lec 27 Distributed Transaction
+Across multiple sites
+
+## multi-site Transaction
+![multi-site-transaction-1](./image/multi-site-transaction-1.png)
+
+## Two-phase Commit
+- Phase-1: preparation / voting
+    - Lower-layer transactions either aborts or tentatively committed
+    - Higher-layer transaction evaluate lower situation
+- Phase-2：commitment
+    - If top-layer, then COMMIT or ABORT
+    - If nested itself, then become tentatively committed
+
+![multi-site-transaction-2](./image/multi-site-transaction-2.png)
+
+commit 之前先确认是否 ready
+
+## Multiple-site Atomicity
+- Worker: Bob, Charles, Dawn
+    - Does three transactions: X, Y, Z
+- Coordinator: Alice 
+    - Create a higher-layer transaction
+    - Send three messages to the three workers
+- Challenge: **un-reliable communication**
+
+![multi-site-transaction-3](./image/multi-site-transaction-3.png)
+
+- Coordinator
+    - Collect some ABORT or nothing: ABORT or assign the work to another worker
+    - Collect all COMMIT: then COMMIT
+- Worker
+    - PREPARED 发出之后，如果什么都没收到：resend PREPARED
+        - Coordinator will send current state if it receives duplicate message
+    - 如果收到 COMMIT: then COMMIT
+
+- Failure: lost prepare
+![lost-prepare](./image/lost-prepare.png)
+    - coordinate 没有到 A-M 回复，由 coordinate 重发 prepare
+- Failure: lost ack for prepare
+![lost-ack-for-prepare](./image/lost-ack-for-prepare.png)
+    - 仍然由 coordinate 重发 prepare
+- Failure: worker failure during prepare
+![worker-failure](./image/worker-failure.png)
+    - 根据心跳，发现 worker 崩溃，coordinate 发 abort
+- Failure: lost commit 
+![lost-commit](./image/lost-commit.png)
+    - coordinate 重发 commit
+- Failure: lost ack for commit 
+![lost-ack-for-commit](./image/lost-ack-for-commit.png)
+    - coordinate 重发 commit
+- Failure: worker failure during commit 
+![worker-failure-in-commit](./image/worker-failure-in-commit.png)
+    - 这时我们不能够简单的 abort
+    - 必须将 worker 恢复至 prepared 状态
+    - prepared 之后 worker 将 PREPARE 记录写入 log
+    - 读取 log
+    - 推测哪个 transaction prepare 但是没有 commit
+    - 然后 worker 给 coordinate 发消息，让 coordinate 重发 commit
+![worker-failure-in-commit2](./image/worker-failure-in-commit2.png)
+- Failure: coordinator failure during prepare
+![coordinator-failure-during-prepare](./image/coordinator-failure-during-prepare.png)
+    - coordinator 恢复以后，给 worker 发 abort
+- Failure: coordinator failure during commit 
+![coordinator-failure-during-commit](./image/coordinator-failure-during-commit.png)
+    - coordinator 恢复以后，给 worker 发 commit
+
+### Summary of 2-phase Commit
+- 2-phase Commit 解决了 mult-site atomicity
+- 发生在 commit point 之前的 failure 都要 abort；发生在 commit point 之后的，等恢复以后继续
+- Availability 和 replication 其实还有问题没解决：通过 replica 的方式提高 availability，必须先解决多份数据的一致性
+
+# lec 27 (2) Security
+
+## 安全系统中两个重要的概念
+- Policy
+- Threat Model
+
+### Policy: Goals
+- Information security goals：
+    - Privacy：限制谁能读取数据
+    - Integrity：限制谁能写数据
+- Liveness goals：
+    - Availability：保证服务运行
+
+### Threat Model：Assumptions
+- What dose a threat model look like
+    - Adversary controls some computers, networks (but not all)
+    - Adversary controls some software on computers he doesn't fully control
+    - Adversary knows some information, such as passwords or keys (but not all)
+    - Adversary knows about bugs in your software?
+    - Physical attacks?
+    - Social engineering attacks?
+    - Resources?  (Can be hard to estimate either resources or requirements!)
+
+## Guard Model
+
+### Guard Model of Security
+- Complete mediation 
+    - 所有对于资源的访问都要经过 guard
+- Only way to access the resource involves the guard
+1. Must enforce client-server modularity
+    - Adversary should not be able to access server's resources directly
+    - E.g., assume OS enforces modularity, or run server on separate machine
+2. Must ensure server properly invokes the guard in all the right places
+
+![guard-model](./image/guard-model.png)
+
+- *Authentication*: is the principal who they claim to be?
+- *Authorization*: does principal have access to perform request on resource?
+
+### Design the Guard
+- Authentication: request -> principal
+    - E.g., client's username, verified using password
+- Authorization: (request, principal, resource) -> allow?
+    - E.g., consult access control list (ACL) for resource
+- Simplifies security
+    - Can consider the guards under threat model
+    - But don't forget about complete mediation
+
+#### Example: Unix FS
+- Resource:	files, directories.
+- Server:	OS kernel.
+- Client:	process.
+- Requests:	read, write system calls.
+- Mediation:	U/K bit / system call implementation.
+- Principal:	user ID.
+- Authentication:  kernel keeps track of user ID for each process.
+- Authorization:   permission bits & owner uid in each  file's inode.
+#### Example: Firewall
+- Resource: 	internal servers
+- Client: 	any computer sending packets
+- Server: 	the entire internal network
+- Requests: 	packets
+- Mediation:
+    - internal network must not be connected to internet in other ways
+    - no open wifi access points on internal network for adversary to use
+    - no internal computers that might be under control of adversary
+- Principal, authentication: none
+- Authorization: check for IP address & port in table of allowed connections
+### What can go Wrong
+1. Bypass complete mediation by software bugs
+2. Bypass complete mediation by an adversary
+3. Policy vs. mechanism
+4. Interactions between layers, components
+5. Users make mistakes
+6. Cost of security
+
+### Bypass complete mediation
+减少代码行数，是代码易于维护，bug更少
+
+# lec 28 
+## Authentication
+### Principle of Least Privilege
+- Deal with bugs / incomplete mediation
+    - 任何 component 对于资源的访问都要经过 guard
+    - 如果这个 component 有 bug 或者设计有问题，会导致 incomplete mediation
+    - 因此减少 component 的数量
+
+### Security Jargon：Trust
+- Trusted is bad：如果信任的 component 崩溃了，gg
+- Untrusted components are good：崩了也无所谓
+- 好的设计中少有 Trusted component
+
+### Policy VS. Mechanism
+- 高层次的 policy 是简明、清楚的
+    - Security mechanism(e.g. gurads) 提供低层次的保障
+    - E.g., policy is that students cannot get a copy of exam.txt
+        - What should the permissions on the files be?
+        - What should the firewall rules be?
+- Good idea: try to line up security mechanisms with desired policies
+
+### Interactions between layers
+```sh
+cse-srv% cd /2012f/bob/project
+cse-srv% cat ideas.txt
+Hello world.
+…
+cse-srv% mail alice@sjtu.edu.cn < ideas.txt
+cse-srv% 
+```
+
+如果有人将 ideas.txt 变成 exam.txt 的 Symbolic Link
+
+### Users Make Mistakes
+- Social engineering, phishing attacks
+    - How many of you really read the permission acquired by apps during installing?
+- Good idea: threat model should not assume users are perfect
+
+### Cost of Security
+- Security VS. Availability
+    - E.g., system requires frequent password changes -> users may write them down
+- Good idea: cost of security mechanism should be commensurate with value
+
+## Case：Password
+### An Example: Guessing Password
+```python
+def checkpw(user, passwd):
+    acct = accounts[user]
+    for i in range(0, len(acct.pw)):
+        if acct.pw[i] ≠ passwd[i]:
+            return False
+    return True
+```
+
+### Problem: Guess One Character at a Time
+- Guess a password
+    - Allocate password 1 byte away from a page boundary
+    - Page-fault means first char is OK
+    - Example of cross-layer interactions
+- Also known as "Timing Attack"
+
+### Problem: server has a copy of all passwords
+- If adversary exploits buffer overflow, can get a copy of all passwords
+
+### Solution: 存储密码的哈希值
+- 同时解决以上两个问题
+
+```python
+def check_password(username, inputted_password):
+    stored_hash = accounts_table[username]
+    inputted_hash = hash(inputted_password) 
+    return stored_hash == inputted_hash 
+```
+
+### Problem：Rainbow Table
+- 如果 1M 的账户信息（密码的哈希值）都泄露了
+- 攻击者可以逐个猜测密码，建立 common passwords 的哈希表
+- 彩虹表
+
+### Solution
+- Numbers + uppercase + lowercase
+- 加盐
+    - hash(salting(password, random_salt_value))
+    - 存储盐值和哈希值
+
+```python
+def check_password(username, inputted_password):   
+    stored_hash = accounts_table[username] 
+    inputted_hash = hash(inputted_password | salt) 
+    return stored_hash == inputted_hash 
+```
+
+### Bootstrap Authentication
+- 不要每个指令都验证密码
+- Web
+    - cookie
+    - jwt
+
+### Session Cookies: Strawman
+- 登录时检查用户名和密码，成功后返回
+    - {username, expiration, H(server_key | username | expiration)}
+- Use the tuple to authenticate user for a period of time
+    - 不需要存储密码，或者频繁登录
+    - server_key 防止用户自行伪造 session
+    - server_key 可以改变
+    - 可以检查 username 和 expiration 是否正确
+
+### Problem：同一个哈希值可能用于不同的 username & expiration pair
+- E.g., "Ben" and "22-May-2012" may also be "Ben2" and "2-May-2012"
+- 加个分隔符就完事了……
+
+### Phishing Attacks 仿冒
+- 假网站，让你输用户名和密码
+- 之后的某些 Tech 要靠 Server + Browser 一起来验证
+
+### Technique 1：challenge-response scheme
+- Server chooses a random value R, sends it to client
+- Client computes H(R + password) and sends to server
+- Server checks if this matches its computation of hash with expected password
+- If the server did not already know password, still does not know (to defend against phishing)
+
+![challenge-response](./image/challenge-response.png)
+- Adversary only learns H(valarMorghul1s | 458643); can not recover the password from that 
+
+### Technique 2:Make the server prove it knows your password
+- Client chooses Q, sends to server, server computes H(Q + password), replies
+    - Server 如果存储的是密码的哈希值，这里应该是 H(Q+H(password))
+- Only the authentic server would know your password!
+
+- 如果 Tech1 Tech2 两种形式同时存在，也是有问题的
+- Fake server 拿着 Tech1 的 R，给真 server 发 Tech2 的请求，server 返回 H(R + password) 给 Fake server。Fake server 再把 H(R + password) 给 server 发 Tech 1 的请求
+
+### Tech 3: turn offline into online attack
+- Turn phishing attacks from offline into online attacks
+    - If adversary doesn't have the right image, users will know the site is fake
+    - Adversary could talk to real site, fetch image for each user that logs in
+
+- Why is it still useful, then?
+    - 攻击者需要花更多的心思
+    - 而且被仿冒的网站可以发现有人仿冒它
+- Key insight
+    - Don't need perfect security, small improvements can help
+
+### Tech 4: Specific password
+- Make passwords specific to a site.
+    - Instead of sending password, send H(servername + password).
+    - Just like a basic password scheme, from the server's point of view.
+- Except impersonator on another server gets diff passwd.
+- Recommendation
+    - E.g., LastPass
+
+### Tech 5: one-time passwords
+- Design: construct a long chain of hashes.
+    - Start with password and salt, as before.
+    - Repeatedly apply hash, n times, to get n passwords.
+    - Server stores x = H(H(H(H(...(H(salt+password)))))) = Hn(salt+password)
+- To authenticate, send token=H{n-1}(salt+password).
+    - Server verifies that x = H(token), then sets x <- token
+    - User carries a printout of a few hashes, or uses smartphone to compute them.
+- Alternative design: include time in the hash (Google's 2-step verification)
+    - Server and user's smartphone share some secret string K.
+    - To authenticate, smartphone computes H(K || current time).
+    - User sends hash value to server, server can check a few recent time values.
+
+### Tech 6: bind authentication and request authorization
+- Session
+
+### Tech 7：FIDO：Replace the password
+![fingerprint](./image/fingerprint.png)
+
+## Secure Channel
+### Encryption Properties
+- Problem: reply attacks
+![replay-attack](./image/replay-attack.png)
+- Problem: reflection attacks
+![reflection-attacks](./image/reflection-attacks.png)
+
+那么A、B使用不同的 key
+![encryption](./image/encryption.png)
+
+问题在于A、B如何知道对方使用的 key？
+
+- 质数 p, g
+- 有以下性质
+    - 若已知 g^r mod p，几乎不可能通过 p, g 求出 r
+
+![diffie-hellman](./image/diffie-hellman.png)
+
+- 仍然有中间人攻击
+![man-in-the-middle](./image/man-in-the-middle.png)
+
+### RSA
+
+使用私钥分发消息
+
+使用公钥验证
+
+{public_key, secret_key}
+
+```
+sign(secret_key, message) -> sig
+verify(public_key, message, sig) -> yes/no
+```
+
+### 如何获得公钥
+1. Alice remembers the key she used last time
+    - Easy to implement
+    - Effective against subsequent man-in-the-middle attacks      
+    - Doesn't protect against MITM attacks the first time around
+    - Doesn't allow parties to change keys   
+2. Consult some authority that knows everyone's public key 
+    - Does not scale (client asks for a PK for every new name)      
+    - Alice needs server's public key beforehand   
+3. Authority, but pre-compute responses 
+    - Authority creates signed messages: {Bob, PK_bob}_{SK_as}
+    - Anyone can verify the authority signed this message, given PK_as
+    - When Alice wants to talk to Bob, she needs a signed message from the authority, but it doesn't matter where this message comes from as long as the signature checks out
+    - i.e., Alice could retrieve the message from a different server
+    - This signed message is a certificate      
+    - More scalable
+
+![TLS-handshake](./image/TLS-handshake.png)
+
+### Questions on Certificate Authorities
+- Who should run the certificate authority?
+- How does the browser get this list of CAs?       
+    - Generally they come with the browser     
+- How does the CA build its table of names <-> public keys?      
+    - Have to agree on how to name principals, and 
+    - Need a mechanism to check that a key corresponds to a name    
+- What if a CA makes a mistake?       
+    - Need a way to revoke certificates: Expiration date?  Not useful for immediate  problems      
+    - Publish certificate revocation list?  Works in theory, not as well in practice
+    - Query online server to check certificate freshness?  Not a bad idea   
+- Alternative: avoid CAs by using public keys as names (protocols: SPKI/SDSI)
+    - Works well for names that users do not have to remember/enter
